@@ -4,6 +4,9 @@ import com.example.pojo.AlphaVantageResponse;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYTextAnnotation;
+import org.jfree.chart.axis.DateAxis;
+import org.jfree.chart.axis.DateTickUnit;
+import org.jfree.chart.axis.DateTickUnitType;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -12,7 +15,6 @@ import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 import org.jfree.chart.ChartUtils;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
-
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.Ellipse2D;
@@ -21,6 +23,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.Map;
 
 public class GraphBuilder {
@@ -35,12 +39,17 @@ public class GraphBuilder {
         TimeSeries prices = new TimeSeries("Prices");
 
         // Loop over the data in the response and add it to the time series
+        LocalDate currentDate = LocalDate.now();
+        LocalDate tenYearsAgo = currentDate.minusYears(10);
         for (Map.Entry<String, AlphaVantageResponse.DataOnTheValueOfTheShares> entry : response.getDataOnTheValueOfTheShares().entrySet()) {
             String dateString = entry.getKey();
-            AlphaVantageResponse.DataOnTheValueOfTheShares data = entry.getValue();
-            double price = Double.parseDouble(data.getClose());
-            Day day = new Day(Integer.parseInt(dateString.substring(8, 10)), Integer.parseInt(dateString.substring(5, 7)), Integer.parseInt(dateString.substring(0, 4)));
-            prices.add(day, price);
+            LocalDate date = LocalDate.parse(dateString);
+            if (date.isAfter(tenYearsAgo)) {
+                AlphaVantageResponse.DataOnTheValueOfTheShares data = entry.getValue();
+                double price = Double.parseDouble(data.getClose());
+                Day day = new Day(date.getDayOfMonth(), date.getMonthValue(), date.getYear());
+                prices.add(day, price);
+            }
         }
 
         // Add the time series to the dataset
@@ -69,7 +78,7 @@ public class GraphBuilder {
             double splitCoefficient = Double.parseDouble(data.getSplitCoefficient());
             if (splitCoefficient != 1.0) {
                 Day day = new Day(Integer.parseInt(dateString.substring(8, 10)), Integer.parseInt(dateString.substring(5, 7)), Integer.parseInt(dateString.substring(0, 4)));
-                XYTextAnnotation annotation = new XYTextAnnotation("split = " + String.valueOf(splitCoefficient), day.getFirstMillisecond(), plot.getRangeAxis().getUpperBound());
+                XYTextAnnotation annotation = new XYTextAnnotation("split = " + splitCoefficient, day.getFirstMillisecond(), plot.getRangeAxis().getUpperBound());
                 annotation.setFont(annotation.getFont().deriveFont(12.0f));
                 plot.addAnnotation(annotation);
             }
@@ -77,6 +86,11 @@ public class GraphBuilder {
         // Set upper margin to create more space above the graph
         NumberAxis rangeAxis = (NumberAxis) plot.getRangeAxis();
         rangeAxis.setUpperMargin(0.1);
+
+        // Set custom date format for X axis
+        DateAxis dateAxis = (DateAxis) plot.getDomainAxis();
+        dateAxis.setTickUnit(new DateTickUnit(DateTickUnitType.MONTH, 6));
+        dateAxis.setDateFormatOverride(new SimpleDateFormat("MM.yyyy"));
         return convertJFreeChartObjectToImage(chart);
     }
 
@@ -91,7 +105,7 @@ public class GraphBuilder {
             throw new RuntimeException(e);
         }
         // Load the image file into a BufferedImage object
-        BufferedImage image = null;
+        BufferedImage image;
         try {
             image = ImageIO.read(outputFile);
         } catch (IOException e) {
@@ -108,7 +122,6 @@ public class GraphBuilder {
         byte[] imageBytes = outputStream.toByteArray();
 
         // Create a new InputFile object from the byte array
-        InputFile photo = new InputFile(new ByteArrayInputStream(imageBytes), "chart.png");
-        return photo;
+        return new InputFile(new ByteArrayInputStream(imageBytes), "chart.png");
     }
 }

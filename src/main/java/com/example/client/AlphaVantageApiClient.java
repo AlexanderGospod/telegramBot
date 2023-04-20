@@ -5,13 +5,12 @@ import io.restassured.response.Response;
 import com.example.pojo.AlphaVantageResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
 
-public class AlphaVantageApiClient { // class that represents the response received from the Alpha Vantage API
+public class AlphaVantageApiClient {
     private static final Logger logger = LoggerFactory.getLogger(AlphaVantageApiClient.class);
     private final String API_KEY;
     private final String BASE_URI;
@@ -20,13 +19,10 @@ public class AlphaVantageApiClient { // class that represents the response recei
         try (InputStream input = getClass().getResourceAsStream("/application.properties")) {
             Properties props = new Properties();
             props.load(input);
-            this.API_KEY = props.getProperty("apiKey");
+            this.API_KEY = props.getProperty("alphaVantageApiKey");
             this.BASE_URI = props.getProperty("baseUri");
             this.ENDPOINT = props.getProperty("endpoint");
-        } catch (NullPointerException e) {
-            logger.error("Unable to read properties from the configuration file in the resources section", e);
-            throw new NullPointerException();
-        }catch (IOException e) {
+        } catch (NullPointerException | IOException e) {
             logger.error("Unable to read properties from the configuration file in the resources section", e);
             throw new NullPointerException();
         }
@@ -44,5 +40,14 @@ public class AlphaVantageApiClient { // class that represents the response recei
                 .extract()
                 .response();
         return response.as(AlphaVantageResponse.class);
+    }
+    public String getTickerSymbol(String companyName){
+        Response response = RestAssured.given()
+                .param("function", "SYMBOL_SEARCH")
+                .param("keywords", companyName)
+                .param("apikey", API_KEY)
+                .get(BASE_URI + ENDPOINT);
+
+        return response.jsonPath().getString("bestMatches.find { it.'4. region' == 'United States' }.'1. symbol'");
     }
 }

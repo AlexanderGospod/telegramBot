@@ -2,6 +2,7 @@ package com.example.bot;
 
 
 import com.example.client.AlphaVantageApiClient;
+import com.example.client.BingApiClient;
 import com.example.pojo.AlphaVantageResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,6 @@ public class TradingBot extends TelegramLongPollingBot {
     private final String BOT_NAME;
     private final String BOT_TOKEN;
     private boolean chatIsActive;
-    private int chatMessageCount = 0;
 
     public TradingBot() {
         try (InputStream input = getClass().getResourceAsStream("/application.properties")) {
@@ -32,10 +32,7 @@ public class TradingBot extends TelegramLongPollingBot {
             props.load(input);
             BOT_NAME = props.getProperty("botName");
             BOT_TOKEN = props.getProperty("botToken");
-        } catch (NullPointerException e) {
-            logger.error("Unable to read properties from the configuration file in the resources section", e);
-            throw new NullPointerException();
-        } catch (IOException e) {
+        } catch (NullPointerException | IOException e) {
             logger.error("Unable to read properties from the configuration file in the resources section", e);
             throw new NullPointerException();
         }
@@ -48,7 +45,7 @@ public class TradingBot extends TelegramLongPollingBot {
             if (messageText.equals("/start")) {
                 startChat(update);
             } else if (chatIsActive) {
-                SendRequestAboutValueOfTheCompanyShares(update);
+                sendRequestAboutValueOfTheCompanyShares(update);
             } else {
                 sendWarningMessage(update);
             }
@@ -57,7 +54,8 @@ public class TradingBot extends TelegramLongPollingBot {
 
     private void startChat(Update update) {
         String userName = update.getMessage().getChat().getFirstName();
-        String greeting = "Hello, " + userName + "! \nPlease enter the name of the company:";
+        String greeting = "Hello, " + userName + "! \nI can build a graph of the company's stock price."
+                + "\nPlease enter the name of the company:";
         sendMessageToChat(update, greeting);
         chatIsActive = true;
     }
@@ -75,16 +73,44 @@ public class TradingBot extends TelegramLongPollingBot {
         sendMessageToChat(update, warning);
     }
 
-    private void SendRequestAboutValueOfTheCompanyShares(Update update) {
+    private void sendRequestAboutValueOfTheCompanyShares(Update update) {
         if (!update.getMessage().getText().equals("/start")) {
             String company = update.getMessage().getText();
-            String message = "Received! One moment, I am drawing a graph";
+            String message = "I'm looking for information about " + company;
             sendMessageToChat(update, message);
-            AlphaVantageApiClient client = new AlphaVantageApiClient();
-            AlphaVantageResponse response = client.getStockData(company);
-            sendGraph(update, response);
+
+            String companyNameInEnglish = getCompanyNameInEnglish(company);
+            String companySTicker = getCompanySTicker(companyNameInEnglish);
+
+            if (companySTicker != null){
+                message = "One moment, I am drawing a graph for " + companySTicker;
+                sendMessageToChat(update, message);
+                AlphaVantageResponse response = getStockData(companySTicker);
+                sendGraph(update, response);
+            }else {
+                message = "We apologize, but it seems that you entered the incorrect company name, " +
+                        "or on Alpha Vantage there is no information about the value of the shares of " + companyNameInEnglish
+                        + "\nPlease enter the name of the company:";
+                sendMessageToChat(update, message);
+            }
         }
     }
+
+    private String getCompanyNameInEnglish(String company) {
+        BingApiClient bingApiClient = new BingApiClient();
+        return bingApiClient.getCorrectCompanyNameInEnglish(company);
+    }
+
+    private String getCompanySTicker(String companyNameInEnglish) {
+        AlphaVantageApiClient alphaVantageApiClient = new AlphaVantageApiClient();
+        return alphaVantageApiClient.getTickerSymbol(companyNameInEnglish);
+    }
+
+    private AlphaVantageResponse getStockData(String companySTicker) {
+        AlphaVantageApiClient alphaVantageApiClient = new AlphaVantageApiClient();
+        return alphaVantageApiClient.getStockData(companySTicker);
+    }
+
 
     private void sendGraph(Update update, AlphaVantageResponse response) {
         // Use the Telegram Bot API's sendPhoto method to send the graph as a photo to your bot
